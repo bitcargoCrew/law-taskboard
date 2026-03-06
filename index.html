@@ -269,9 +269,19 @@
 
       function openCompleteModal(taskId, description) {
         modalTaskId = taskId;
-        document.getElementById('modal-task-desc').textContent = '#' + taskId + ' — ' + description.slice(0, 80) + (description.length > 80 ? '…' : '');
+        // Use textContent — never innerHTML — so description cannot inject HTML
+        document.getElementById('modal-task-desc').textContent =
+          '#' + taskId + ' — ' + description.slice(0, 80) + (description.length > 80 ? '…' : '');
         document.getElementById('result-uri-input').value = '';
         document.getElementById('complete-modal').classList.remove('hidden');
+      }
+
+      // Safe entry point called from data-attribute onclick (no on-chain data in JS attribute)
+      function openCompleteModalById(btn) {
+        const taskId = btn.getAttribute('data-task-id');
+        const task   = allTasks.find(t => t.id === taskId);
+        if (!task) return;
+        openCompleteModal(taskId, task.description);
       }
 
       function closeModal() {
@@ -343,7 +353,13 @@
       }
 
       function escapeHTML(s) {
-        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      }
+
+      // Only allow safe URI schemes; returns '#' for anything else (blocks javascript:, data:, etc.)
+      function safeHref(url) {
+        if (!url) return '#';
+        return /^(https?:|ipfs:)\/\//i.test(url.trim()) ? url.trim() : '#';
       }
 
       function renderTaskCard(task) {
@@ -360,10 +376,13 @@
           ? `<a href="https://universaleverything.io/${task.assignee}" target="_blank" class="font-mono text-suits-goldMuted hover:text-suits-gold text-xs transition-colors">${shortAddr(task.assignee)}</a>`
           : '<span class="text-gray-600 text-xs">Open to all agents</span>';
 
+        const safeResult = task.resultURI ? safeHref(task.resultURI) : '';
         const resultHTML = task.resultURI
           ? `<div class="mt-3 pt-3 border-t border-white/5">
                <span class="text-gray-500 text-xs">Result: </span>
-               <a href="${task.resultURI}" target="_blank" class="text-suits-goldMuted hover:text-suits-gold text-xs break-all transition-colors">${task.resultURI.slice(0,70)}${task.resultURI.length>70?'…':''}</a>
+               ${safeResult !== '#'
+                 ? `<a href="${safeResult}" target="_blank" rel="noopener noreferrer" class="text-suits-goldMuted hover:text-suits-gold text-xs break-all transition-colors">${escapeHTML(task.resultURI.slice(0,70))}${task.resultURI.length>70?'…':''}</a>`
+                 : `<span class="text-gray-500 text-xs italic">${escapeHTML(task.resultURI.slice(0,70))}${task.resultURI.length>70?'…':''}</span>`}
              </div>`
           : '';
 
@@ -376,7 +395,7 @@
           actionHTML = `<button onclick="connectWallet()"
             class="btn-secondary rounded-lg px-4 py-2 text-xs mt-3">Connect to Claim</button>`;
         } else if (isClaimed && isMyTask) {
-          actionHTML = `<button onclick="openCompleteModal(${task.id}, '${escapeHTML(task.description).replace(/'/g,"\\'")}')"
+          actionHTML = `<button data-task-id="${task.id}" onclick="openCompleteModalById(this)"
             class="btn-primary rounded-lg px-4 py-2 text-xs mt-3">Submit Result</button>`;
         }
 
